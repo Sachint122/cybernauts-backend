@@ -1,0 +1,18 @@
+const Joi = require('joi');
+
+const register = Joi.object({
+  name: Joi.string().min(2).max(50).required(),
+  email: Joi.string().email().required(),
+  password: Joi.string().min(6).required(),
+  hobbies: Joi.array().items(Joi.string().hex().length(24)),
+});
+
+const login = Joi.object({
+  email: Joi.string().email().required(),
+  password: Joi.string().required(),
+});
+
+module.exports = {
+  register,
+  login,
+};

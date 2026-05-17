@@ -330,6 +330,243 @@ Browser network inspection revealed:
 * undefined values propagated into React state
 
 ---
+# 7. Production Cookie Authentication Failure
+
+## Issue
+
+Authentication worked correctly in local development but failed partially after deployment.
+
+Symptoms:
+
+* login worked
+* some protected APIs worked
+* unlink operation returned:
+
+```text
+Please login to access this resource
+```
+
+despite the user being authenticated.
+
+---
+
+## Root Cause
+
+The frontend and backend were deployed on different domains:
+
+* Frontend → Vercel
+* Backend → Render
+
+The authentication cookie used:
+
+```js
+sameSite: 'lax'
+```
+
+which prevented the browser from consistently sending cookies during cross-origin requests (especially `DELETE` requests).
+
+Localhost testing masked the issue because browsers apply less strict cookie policies on local development environments.
+
+---
+
+## Debugging Process
+
+The issue initially appeared to be:
+
+* broken middleware
+* axios configuration issue
+* JWT verification issue
+* ownership middleware failure
+
+The following areas were inspected:
+
+* auth middleware logs
+* axios configuration
+* request headers
+* browser network tab
+* cookie presence during requests
+
+After comparing local vs production behavior, the issue was isolated to cross-origin cookie policy restrictions.
+
+---
+
+## Final Fix
+
+Updated cookie configuration:
+
+```js
+sameSite:
+  process.env.NODE_ENV === 'production'
+    ? 'none'
+    : 'lax'
+```
+
+along with:
+
+```js
+secure: process.env.NODE_ENV === 'production'
+```
+
+This allowed authentication cookies to work correctly across frontend/backend domains in production.
+
+After clearing browser cookies and re-authenticating, all protected APIs worked correctly.
+
+---
+
+# 8. Vercel SPA Routing 404 Issue
+
+## Issue
+
+Refreshing frontend routes or directly opening routes such as:
+
+```text
+/login
+/dashboard
+```
+
+returned:
+
+```text
+404: NOT_FOUND
+```
+
+on Vercel deployment.
+
+---
+
+## Root Cause
+
+The frontend uses React Router in SPA (Single Page Application) mode.
+
+Vercel attempted to resolve routes like `/login` as physical server files instead of forwarding them to `index.html`.
+
+---
+
+## Debugging Process
+
+The issue appeared only:
+
+* after refreshing pages
+* after logout redirects
+* when directly accessing nested routes
+
+Internal React navigation worked correctly, which indicated:
+
+* frontend routing itself was fine
+* deployment rewrite configuration was missing
+
+---
+
+## Final Fix
+
+Added:
+
+```json
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+```
+
+inside:
+
+```text
+vercel.json
+```
+
+This correctly redirected all frontend routes to React Router.
+
+After redeployment:
+
+* refresh worked
+* logout redirects worked
+* direct URL access worked
+* nested routes worked correctly
+
+---
+
+# 9. Render Deployment Failure — Missing Compression Dependency
+
+## Issue
+
+Backend deployment on Render failed immediately during startup with:
+
+```text
+Error: Cannot find module 'compression'
+```
+
+---
+
+## Root Cause
+
+The `compression` middleware import still existed in `app.js` while the package had been removed from `package.json`.
+
+The issue was hidden locally because old dependencies still existed inside local `node_modules`.
+
+Render performed a fresh dependency installation, exposing the missing package correctly.
+
+---
+
+## Debugging Process
+
+The deployment logs were inspected carefully to identify:
+
+* exact missing dependency
+* require stack
+* startup failure location
+
+This revealed stale local dependencies masking the real issue during local development.
+
+---
+
+## Final Fix
+
+Removed unused:
+
+```js
+require('compression')
+```
+
+and:
+
+```js
+app.use(compression())
+```
+
+from the backend.
+
+After redeployment, the server started successfully.
+
+---
+
+# 10. Full Production Workflow Validation
+
+## Final Deployment Verification
+
+After all deployment-related fixes, the following workflows were tested successfully on live production deployment:
+
+* register
+* login
+* session persistence
+* refresh handling
+* graph rendering
+* recommendations
+* link
+* unlink
+* logout
+* re-login
+
+This validated:
+
+* frontend/backend integration
+* cross-origin authentication
+* SPA routing behavior
+* protected API workflows
+* production-ready deployment stability
 
 ## Final Fix
 
